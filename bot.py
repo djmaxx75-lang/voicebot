@@ -16,22 +16,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def parse_wit_response(raw_text: str):
     """
-    Разбирает ответ Wit.ai, даже если пришло несколько JSON подряд (streamed response).
-    Возвращает последний корректный JSON-объект.
+    Разбирает ответ Wit.ai, когда приходит несколько JSON подряд (streamed response).
+    Возвращает последний JSON, содержащий поле "text".
     """
-    try:
-        return json.loads(raw_text)
-    except json.JSONDecodeError:
-        pass
-
-    # Ищем все {...} блоки в тексте
-    matches = re.findall(r'\{.*?\}(?=\s|$)', raw_text, flags=re.S)
-    for chunk in reversed(matches):
+    # Собираем все возможные JSON-объекты
+    chunks = re.findall(r'\{.*?\}(?=\s|$)', raw_text, flags=re.S)
+    last_valid = None
+    for chunk in chunks:
         try:
-            return json.loads(chunk)
+            parsed = json.loads(chunk)
+            if "text" in parsed and parsed["text"]:
+                last_valid = parsed
         except json.JSONDecodeError:
             continue
-    return None
+    return last_valid
+
 
 
 async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
