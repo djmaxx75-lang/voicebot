@@ -1,7 +1,3 @@
-from keep_alive import keep_alive
-
-keep_alive()  # Запускаем мини-сервер
-
 import os
 import subprocess
 import requests
