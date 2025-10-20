@@ -58,7 +58,7 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = requests.post(url, headers=headers, data=f)
 
     raw = response.text
-    print("RAW Wit.ai response:", raw[:500])  # логируем первые 500 символов
+    print("RAW Wit.ai response (truncated):", raw[:1000]) # логируем первые 1000 символов
 
     parsed = parse_wit_response(raw)
     if not parsed:
