@@ -1,52 +1,50 @@
-import tempfile
+import os
 import subprocess
 import requests
-from aiogram import Bot, Dispatcher, types
-from aiogram.utils import executor
-import os
+from telegram import Update
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-WIT_AI_TOKEN = os.getenv("WIT_AI_TOKEN")
+TELEGRAM_TOKEN = "8320004321:AAGWzpqHz16JI0NIepkg0SDPPgnDi29Q9lQ"
+WIT_AI_TOKEN = "S5SW7YEVF76FX5T2GGZWEY7O7KFJHIC6"
 
-bot = Bot(token=TELEGRAM_TOKEN)
-dp = Dispatcher(bot)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎤 Отправь мне голосовое сообщение — я переведу его в текст!")
 
-@dp.message_handler(commands=['start'])
-async def start_command(message: types.Message):
-    await message.reply("🎤 Отправь мне голосовое сообщение — я переведу его в текст!")
+async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    file = await update.message.voice.get_file()
+    file_path_ogg = "voice.ogg"
+    file_path_wav = "voice.wav"
 
-@dp.message_handler(content_types=['voice'])
-async def voice_to_text(message: types.Message):
+    # Скачиваем голосовое сообщение
+    await file.download_to_drive(file_path_ogg)
+
+    # Конвертируем OGG → WAV
+    subprocess.run(["ffmpeg", "-y", "-i", file_path_ogg, "-ar", "16000", file_path_wav], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    # Отправляем в Wit.ai
+    url = "https://api.wit.ai/speech?v=20220622"
+    headers = {
+        "Authorization": f"Bearer {WIT_AI_TOKEN}",
+        "Content-Type": "audio/wav"
+    }
+
+    with open(file_path_wav, "rb") as f:
+        response = requests.post(url, headers=headers, data=f)
+
+    # Логируем ответ, чтобы отладить при необходимости
+    print("Wit.ai raw response:", response.text)
+
     try:
-        file = await bot.get_file(message.voice.file_id)
-        ogg_file = tempfile.mktemp(suffix=".ogg")
-        wav_file = ogg_file.replace(".ogg", ".wav")
-        await bot.download_file(file.file_path, ogg_file)
-
-        subprocess.run(['ffmpeg', '-i', ogg_file, '-ar', '16000', '-ac', '1', wav_file, '-y'],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-        headers = {'Authorization': f'Bearer {WIT_AI_TOKEN}', 'Content-Type': 'audio/wav'}
-        with open(wav_file, 'rb') as audio:
-            response = requests.post('https://api.wit.ai/speech?v=20210928',
-                                     headers=headers, data=audio)
-
-        if response.status_code == 200:
-            text = response.json().get('text', '').strip()
-            if text:
-                await message.reply(f"🗣 {text}")
-            else:
-                await message.reply("Не удалось распознать речь 😕")
-        else:
-            await message.reply(f"Ошибка: {response.status_code}")
-
+        data = response.json()
+        text = data.get("text", "🤷‍♂️ Не удалось распознать речь.")
     except Exception as e:
-        await message.reply(f"Произошла ошибка: {e}")
+        text = f"Произошла ошибка: {e}"
 
-    finally:
-        for f in [ogg_file, wav_file]:
-            if os.path.exists(f):
-                os.remove(f)
+    await update.message.reply_text(text)
 
 if __name__ == "__main__":
-    executor.start_polling(dp)
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.VOICE, voice_handler))
+    print("🤖 Bot is starting...")
+    app.run_polling()
